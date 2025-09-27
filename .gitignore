@@ -1,3 +1,2 @@
 .env
-models/yandex-gpt.gguf
-.venv/*
+/.venv
