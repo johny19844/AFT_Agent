@@ -398,6 +398,9 @@ class TestAutomationAgent:
             f"Описание сценария:\n{scenario_content}\n\n"
             f"Требования:\n"
             f"- Имя класса: {test_name}Test\n"
+            f"- Не использовать WebDriverManager\n"
+            f"- Используй System.getProperty(\"webdriver.chrome.driver\") для указания пути к chrome driver\n"
+            f"- Используй BeforeEach и AfterEach\n"
             f"{requirements_str}\n"
         )
         # Не дублируем логирование полного промпта здесь, только в generate_text
