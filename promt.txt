@@ -1,0 +1,26 @@
+[INST] <<SYS>>
+Ты - эксперт по автоматизации тестирования на Java + Selenium.
+Сгенерируй полнофункциональный Java тест на основе описания сценария.
+Верни только Java код без дополнительных объяснений.
+<</SYS>>
+
+Описание сценария:
+1. Открыть страницу https://www.saucedemo.com
+2. Выполнить логин
+3. Найти товар и добавить в корзину
+4. Проверить обновление счетчика корзины
+5. Проверить изменение состояния кнопки товара
+
+
+Требования:
+- Имя класса: ya_testTest
+- Используй Java 11
+- Зависимость: org.seleniumhq.selenium:selenium-java:4.15.0
+- Зависимость: org.junit.jupiter:junit-jupiter-api:5.9.2 (scope: test)
+- Зависимость: org.junit.jupiter:junit-jupiter-engine:5.9.2 (scope: test)
+- Зависимость: org.junit.jupiter:junit-jupiter-params:5.9.2 (scope: test)
+- Плагин: org.apache.maven.plugins:maven-surefire-plugin:3.0.0
+- Плагин: org.apache.maven.plugins:maven-compiler-plugin:3.11.0
+
+
+Верни только Java код. [/INST]

@@ -62,7 +62,6 @@ class GGUFModelClient:
                 "[INST] <<SYS>>\n"
                 "Ты - эксперт по автоматизации тестирования на Java + Selenium.\n"
                 "Сгенерируй полнофункциональный Java тест на основе описания сценария.\n"
-                "Используй Java 11+, Selenium 4+, JUnit 5, WebDriverWait.\n"
                 "Верни только Java код без дополнительных объяснений.\n"
                 "<</SYS>>\n\n"
                 f"{prompt}\n\n"
@@ -269,7 +268,10 @@ class TestAutomationAgent:
             f"- Используй JUnit 5\n"
             f"- Добавь WebDriverWait для ожиданий\n"
             f"- Включи логирование шагов\n"
-            f"- Добавь cleanup в @After метод"
+            f"- Добавь cleanup в @After метод\n"
+            f"- Используй Java 11+\n"
+            f"- Selenium 4+\n"
+            f"- Используй паттерн Page Object Model (POM).\n"
         )
         java_code = self.model_client.generate_text(prompt)
         if java_code and self.validate_java_code(java_code):
