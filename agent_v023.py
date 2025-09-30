@@ -118,7 +118,7 @@ class GGUFModelClient:
         prompt = (
             "Ты — эксперт по Selenium. "
             "Тебе дан список требуемых элементов для автотеста и список элементов, найденных на странице (оба в виде JSON). "
-            "Для каждого требуемого элемента найди наиболее подходящий элемент на странице и предложи лучший Selenium локатор для него. "
+            "Для каждого требуемого элемента найди наиболее подходящий элемент на странице и предложи лучший Selenium локатор для него (приоритет по ID или name). "
             "Верни ТОЛЬКО JSON без дополнительного текста в формате: "
             '{"element": {...}, "element_found": true/false, '
             '"locators": [{"type": "ID|CSS|XPATH|NAME", "value": "...", "confidence": 0.95, "explanation": "..."}], '
@@ -593,6 +593,7 @@ class TestAutomationAgent:
         )
         # Не дублируем логирование полного промпта здесь, только в generate_text
         java_code = self.model_client.generate_text(prompt)
+        self.model_client.close()
         if java_code and self.validate_java_code(java_code):
             logger.info(f"✅ Generated valid code for {test_name}Test")
         else:
