@@ -15,6 +15,11 @@ from github import Github, GithubException
 from jenkins import Jenkins
 from llama_cpp import Llama
 import xml.etree.ElementTree as ET
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+import re  # Исправлено: импорт re в начале файла
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,6 +32,187 @@ class GGUFModelClient:
     def __init__(self, model_path: str):
         self.model_path = model_path
         self.llm = None
+        self.driver = None
+
+    #  ***********************Поиск локаторов********************************
+    def setup_driver(self):
+        options = ChromeOptions()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+        service = ChromeService()
+        self.driver = webdriver.Chrome(service=service, options=options)
+        self.driver.implicitly_wait(10)
+
+    def analyze_scenario(self, test_scenario):
+        prompt = (
+            "Ты — помощник по автоматизации тестирования. "
+            "На вход тебе дается тестовый сценарий. "
+            "Определи url страницы входа и какие требуются элементы для создания авто-теста "
+            "(например: поле ввода логина, поле ввода пароля, кнопка войти и т.д.). "
+            "Верни ТОЛЬКО JSON без дополнительного текста в формате: "
+            '{"url": "string", "required_elements": [{"name": "string", "description": "string"}]}.\n\n'
+            f"Тестовый сценарий:\n{test_scenario}\n"
+            "Ответ только в формате JSON:"
+        )
+        # Для отладки: выводим промпт в консоль
+        print("=== PROMPT TO MODEL (analyze_scenario) ===")
+        print(prompt)
+        print("=== END PROMPT ===")
+        output = self.llm(prompt, max_tokens=512, stop=["\n\n"])
+        # Для отладки: выводим результат работы модели в консоль
+        print("=== MODEL OUTPUT (analyze_scenario) ===")
+        rez = self._clean_generated_code(output['choices'][0]['text'])
+        print(rez)
+        print("=== END MODEL OUTPUT ===")
+        # Попробуем найти JSON в ответе
+        match = re.search(r'\{.*\}', output['choices'][0]['text'], re.DOTALL)
+        if match:
+            try:
+                scenario_info = json.loads(match.group(0))
+                return scenario_info
+            except Exception:
+                pass
+        raise ValueError("Не удалось получить корректный JSON из ответа Llama")
+
+
+    def collect_page_elements(self, url):
+        """
+        Собирает информацию о всех видимых элементах на странице.
+        Возвращает список словарей с основной информацией.
+        """
+        self.driver.get(url)
+        elements_info = []
+        # Собираем input, button, a, form, label, select, textarea, div, span
+        tags = ['input', 'button', 'a', 'form', 'label', 'select', 'textarea', 'div', 'span']
+        for tag in tags:
+            try:
+                found = self.driver.find_elements(By.TAG_NAME, tag)
+                for el in found:
+                    if not el.is_displayed():
+                        continue
+                    info = {
+                        "tag": tag,
+                        "text": el.text.strip(),
+                        "id": el.get_attribute("id"),
+                        "name": el.get_attribute("name"),
+                        # "class": el.get_attribute("class"),
+                        # "type": el.get_attribute("type"),
+                        # "placeholder": el.get_attribute("placeholder"),
+                        "value": el.get_attribute("value"),
+                        # "aria_label": el.get_attribute("aria-label"),
+                        # "data_test": el.get_attribute("data-test"),
+                        # "outer_html": el.get_attribute("outerHTML")[:500]
+                    }
+                    elements_info.append(info)
+            except Exception:
+                continue
+        return elements_info
+
+    def generate_locators(self, scenario_elements, page_elements):
+        """
+        Возвращает список элементов с локаторами за одно обращение к ИИ.
+        """
+        prompt = (
+            "Ты — эксперт по Selenium. "
+            "Тебе дан список требуемых элементов для автотеста и список элементов, найденных на странице (оба в виде JSON). "
+            "Для каждого требуемого элемента найди наиболее подходящий элемент на странице и предложи лучший Selenium локатор для него. "
+            "Верни ТОЛЬКО JSON без дополнительного текста в формате: "
+            '{"element": {...}, "element_found": true/false, '
+            '"locators": [{"type": "ID|CSS|XPATH|NAME", "value": "...", "confidence": 0.95, "explanation": "..."}], '
+            '"reasoning": "..."}.\n\n'
+            f"Список требуемых элементов (JSON):\n{json.dumps(scenario_elements, ensure_ascii=False)}\n"
+            f"Список элементов на странице (JSON):\n{json.dumps(page_elements[:20], ensure_ascii=False)}\n"
+        )
+        output = self.llm(prompt, max_tokens=2048, stop=["\n\n"])
+        # Для отладки: выводим результат работы модели в консоль
+        print("=== MODEL INPUT (generate_locators) ===")
+        print(prompt)
+        print("=== END MODEL INPUT ===")
+
+        print("=== MODEL OUTPUT (generate_locators) ===")
+        locators = self._clean_generated_code(output['choices'][0]['text'])
+        print(json.dumps(locators, ensure_ascii=False, indent=2))
+        print("=== END MODEL OUTPUT ===")
+        # Попробуем найти JSON-массив в ответе
+        # match = re.search(r'\[.*\]', output['choices'][0]['text'], re.DOTALL)
+        # match = re.search(r'\[.*\]', locators, re.DOTALL)
+        # if match:
+        #     try:
+        #         locators_list = json.loads(match.group(0))
+        #         # Проверяем, что это список и элементы имеют нужную структуру
+        #         results = []
+        #         if isinstance(locators_list, list) and len(locators_list) == len(scenario_elements):
+        #             for idx, elem in enumerate(scenario_elements):
+        #                 locator_info = locators_list[idx]
+        #                 # Оставляем только первый (надежный) локатор, если есть
+        #                 best_locator = None
+        #                 if isinstance(locator_info, dict) and isinstance(locator_info.get("locators"), list) and locator_info["locators"]:
+        #                     best_locator = locator_info["locators"][0]
+        #                 results.append({
+        #                     "element": elem,
+        #                     "locator": best_locator if best_locator else {"error": "Локатор не найден"},
+        #                     "reasoning": locator_info.get("reasoning", "") if isinstance(locator_info, dict) else ""
+        #                 })
+        #             return results
+        #         else:
+        #             # Если длина не совпадает, но JSON корректный, возвращаем что есть
+        #             for idx, elem in enumerate(scenario_elements):
+        #                 if isinstance(locators_list, list) and idx < len(locators_list):
+        #                     locator_info = locators_list[idx]
+        #                     best_locator = None
+        #                     if isinstance(locator_info, dict) and isinstance(locator_info.get("locators"), list) and locator_info["locators"]:
+        #                         best_locator = locator_info["locators"][0]
+        #                     results.append({
+        #                         "element": elem,
+        #                         "locator": best_locator if best_locator else {"error": "Локатор не найден"},
+        #                         "reasoning": locator_info.get("reasoning", "") if isinstance(locator_info, dict) else ""
+        #                     })
+        #                 else:
+        #                     results.append({
+        #                         "element": elem,
+        #                         "locator": {"error": "Нет соответствующего элемента в ответе AI"},
+        #                         "reasoning": ""
+        #                     })
+        #             return results
+        #     except Exception as e:
+        #         print(f"Ошибка при разборе JSON: {e}")
+        # # Если не удалось распарсить корректно
+        # results = []
+        # for elem in scenario_elements:
+        #     results.append({
+        #         "element": elem,
+        #         "locator": {"error": "AI не вернул корректный JSON"},
+        #         "reasoning": ""
+        #     })
+        return locators
+
+    def find_locators(self, test_scenario):
+        # 1. Анализируем сценарий
+        scenario_info = self.analyze_scenario(test_scenario)
+        url = scenario_info.get("url")
+        print(f"Определен URL для Selenium: {url}")
+        required_elements = scenario_info.get("required_elements", [])
+        if not url or not required_elements:
+            raise ValueError("Не удалось определить url или элементы из сценария")
+
+        # 2. Собираем элементы страницы
+        self.setup_driver()
+        page_elements = self.collect_page_elements(url)
+
+        # 3. Генерируем локаторы для требуемых элементов
+        elements_with_locators = self.generate_locators(required_elements, page_elements)
+        return elements_with_locators
+
+    def close(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+    # *******************************************************************
 
     def log_full_prompt(self, prompt: str):
         """Логирует полный промпт, который передается модели"""
@@ -93,7 +279,7 @@ class GGUFModelClient:
         cleaned_lines = [
             line for line in lines
             if not any(artifact in line for artifact in ['[INST]', '<<SYS>>', '[/INST]', '<s>', '</s>'])
-            and line.strip() not in ['```java', '```']
+            and line.strip() not in ['```java', '```','```json']
         ]
         return '\n'.join(cleaned_lines).strip()
 
@@ -259,7 +445,7 @@ class TestAutomationAgent:
             # Сохраняем временную копию
             temp_dir = tempfile.mkdtemp()
             file_path = os.path.join(temp_dir, os.path.basename(filename))
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            # Исправлено: не нужно создавать директорию, если она уже есть (mkdtemp гарантирует существование)
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(file_content)
             logger.info(f"✅ File downloaded successfully: {filename}")
@@ -393,7 +579,8 @@ class TestAutomationAgent:
         # Получаем требования из pom.xml
         requirements_list = self._get_pom_requirements()
         requirements_str = "\n".join(requirements_list)
-
+        scenario = scenario_content
+        test_locators = self.model_client.find_locators(scenario)
         prompt = (
             f"Описание сценария:\n{scenario_content}\n\n"
             f"Требования:\n"
@@ -402,6 +589,7 @@ class TestAutomationAgent:
             f"- Используй System.getProperty(\"webdriver.chrome.driver\") для указания пути к chrome driver\n"
             f"- Используй BeforeEach и AfterEach\n"
             f"{requirements_str}\n"
+            f" - Используй следующие локаторы:\n {test_locators}"
         )
         # Не дублируем логирование полного промпта здесь, только в generate_text
         java_code = self.model_client.generate_text(prompt)

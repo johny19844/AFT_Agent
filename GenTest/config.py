@@ -14,8 +14,8 @@ class Config:
     
     # Настройки локальной модели
     LOCAL_MODEL_PATH = os.getenv('LOCAL_MODEL_PATH', 'models/codellama-7b.q4_0.gguf')
-    LOCAL_MODEL_MAX_TOKENS = 2048
-    LOCAL_MODEL_TEMPERATURE = 0.1
+    LOCAL_MODEL_MAX_TOKENS = 8048
+    LOCAL_MODEL_TEMPERATURE = 0.7
     
     # Автоматическое определение системы
     SYSTEM = platform.system().lower()
@@ -29,7 +29,7 @@ class Config:
     else:
         BROWSER = "chrome"
         
-    HEADLESS = False
+    HEADLESS = True
     
     # Таймауты
     PAGE_LOAD_TIMEOUT = 30
