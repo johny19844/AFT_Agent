@@ -26,14 +26,19 @@ class LocalAILocatorFinder:
         self.driver.implicitly_wait(10)
 
     def analyze_scenario(self, test_scenario):
+        """
+        Анализирует текст сценария, извлекает url и список требуемых элементов.
+        Использует LLM для парсинга сценария.
+        """
         prompt = (
             "Ты — помощник по автоматизации тестирования. "
             "На вход тебе дается тестовый сценарий. "
             "Определи url страницы входа и какие требуются элементы для создания авто-теста "
             "(например: поле ввода логина, поле ввода пароля, кнопка войти и т.д.). "
-            "Верни JSON вида: "
-            '{"url": "...", "required_elements": [{"name": "...", "description": "..."}]}.\n\n'
+            "Верни ТОЛЬКО JSON без дополнительного текста в формате: "
+            '{"url": "string", "required_elements": [{"name": "string", "description": "string"}]}.\n\n'
             f"Тестовый сценарий:\n{test_scenario}\n"
+            "Ответ только в формате JSON:"
         )
         # Для отладки: выводим промпт в консоль
         print("=== PROMPT TO MODEL (analyze_scenario) ===")
@@ -42,9 +47,10 @@ class LocalAILocatorFinder:
         output = self.llm(prompt, max_tokens=512, stop=["\n\n"])
         # Для отладки: выводим результат работы модели в консоль
         print("=== MODEL OUTPUT (analyze_scenario) ===")
-        print(output['choices'][0]['text'])
+        rez = self._clean_generated_code(output['choices'][0]['text'])
+        print(rez)
         print("=== END MODEL OUTPUT ===")
-        # Попробуем найти JSON в ответе
+        # Пытаемся найти JSON в ответе модели
         match = re.search(r'\{.*\}', output['choices'][0]['text'], re.DOTALL)
         if match:
             try:
@@ -52,6 +58,7 @@ class LocalAILocatorFinder:
                 return scenario_info
             except Exception:
                 pass
+        # Если не удалось получить корректный JSON — выбрасываем ошибку
         raise ValueError("Не удалось получить корректный JSON из ответа Llama")
 
     def collect_page_elements(self, url):
@@ -61,14 +68,14 @@ class LocalAILocatorFinder:
         """
         self.driver.get(url)
         elements_info = []
-        # Собираем input, button, a, form, label, select, textarea, div, span
-        tags = ['input', 'button', 'a', 'form', 'label', 'select', 'textarea', 'div', 'span']
+        # Список тегов, которые нас интересуют для поиска элементов
+        tags = ['input', 'button', 'a', 'select', 'textarea', 'div', 'span']
         for tag in tags:
             try:
                 found = self.driver.find_elements(By.TAG_NAME, tag)
                 for el in found:
                     if not el.is_displayed():
-                        continue
+                        continue  # Пропускаем невидимые элементы
                     info = {
                         "tag": tag,
                         "text": el.text.strip(),
@@ -77,72 +84,69 @@ class LocalAILocatorFinder:
                         # "class": el.get_attribute("class"),
                         # "type": el.get_attribute("type"),
                         # "placeholder": el.get_attribute("placeholder"),
-                        "value": el.get_attribute("value"),
+                        #"value": el.get_attribute("value"),
                         # "aria_label": el.get_attribute("aria-label"),
                         # "data_test": el.get_attribute("data-test"),
                         # "outer_html": el.get_attribute("outerHTML")[:500]
                     }
                     elements_info.append(info)
             except Exception:
-                continue
+                continue  # Игнорируем ошибки для отдельных тегов
         return elements_info
 
     def generate_locators(self, scenario_elements, page_elements):
         """
-        Возвращает список элементов с локаторами за одно обращение к ИИ.
+        Генерирует локаторы для требуемых элементов, используя LLM.
+        Возвращает список элементов с локаторами.
         """
         prompt = (
             "Ты — эксперт по Selenium. "
-            "Тебе дан список требуемых элементов для автотеста и список элементов, найденных на странице (оба в виде JSON). "
-            "Для каждого требуемого элемента найди наиболее подходящий элемент на странице и предложи лучший Selenium локатор для него. "
-            "Верни JSON-массив, где для каждого требуемого элемента есть объект вида: "
-            '{"element": {...}, "element_found": true/false, '
-            '"locators": [{"type": "ID|CSS|XPATH|NAME", "value": "...", "confidence": 0.95, "explanation": "..."}], '
-            '"reasoning": "..."}.\n\n'
+            "Тебе дан список требуемых элементов для автотеста из сценария и список html элементов, найденных на странице (оба в виде JSON). "
+            "Для каждого требуемого элемента из сценария найди наиболее подходящий элемент на html странице и сформируй лучший Selenium локатор для него (приоритет отдавай ID если на странице он уникален). "
+            "Верни ТОЛЬКО JSON без дополнительного текста, в формате: \n"
+            '[\n'
+            '{\n'
+            '    "required_element": {\n'
+            '    "name": "...",\n'
+            '    "description": "..."\n'
+            '    },\n'
+            '    "locator": {\n'
+            '    "type": "By.ID|By.cssSelector|By.name|By.xpath|",\n'
+            '    "value": "...",\n'
+            '    "reasoning": "..."\n'
+            '    }\n'
+            '}\n'
+            ']\n'
             f"Список требуемых элементов (JSON):\n{json.dumps(scenario_elements, ensure_ascii=False)}\n"
             f"Список элементов на странице (JSON):\n{json.dumps(page_elements[:20], ensure_ascii=False)}\n"
         )
         output = self.llm(prompt, max_tokens=2048, stop=["\n\n"])
-        # Попробуем найти JSON-массив в ответе
-        match = re.search(r'\[.*\]', output['choices'][0]['text'], re.DOTALL)
-        if match:
-            try:
-                locators_list = json.loads(match.group(0))
-                # Проверяем, что это список и элементы имеют нужную структуру
-                results = []
-                for idx, elem in enumerate(scenario_elements):
-                    locator_info = None
-                    # Найти соответствующий объект по "element" или по индексу
-                    if isinstance(locators_list, list) and idx < len(locators_list):
-                        locator_info = locators_list[idx]
-                    if locator_info and isinstance(locator_info, dict):
-                        # Оставляем только первый (надежный) локатор, если есть
-                        best_locator = None
-                        if isinstance(locator_info.get("locators"), list) and locator_info["locators"]:
-                            best_locator = locator_info["locators"][0]
-                        results.append({
-                            "element": elem,
-                            "locator": best_locator if best_locator else {"error": "Локатор не найден"},
-                            "reasoning": locator_info.get("reasoning", "")
-                        })
-                    else:
-                        results.append({
-                            "element": elem,
-                            "locator": {"error": "AI не вернул корректный JSON"},
-                            "reasoning": ""
-                        })
-                return results
-            except Exception:
-                pass
-        # Если не удалось распарсить корректно
-        results = []
-        for elem in scenario_elements:
-            results.append({
-                "element": elem,
-                "locator": {"error": "AI не вернул корректный JSON"},
-                "reasoning": ""
-            })
-        return results
+        # Для отладки: выводим входные и выходные данные модели
+        print("=== MODEL INPUT (generate_locators) ===")
+        print(prompt)
+        print("=== END MODEL INPUT ===")
+
+        print("=== MODEL OUTPUT (generate_locators) ===")
+        locators = self._clean_generated_code(output['choices'][0]['text'])
+        print(locators)
+        print("=== END MODEL OUTPUT ===")
+        # Возвращаем результат (можно добавить парсинг JSON при необходимости)
+        return locators
+
+    def _clean_generated_code(self, code: str) -> str:
+        """
+        Очищает сгенерированный код от управляющих токенов и артефактов.
+        """
+        if not code:
+            return ""
+        lines = code.split('\n')
+        cleaned_lines = [
+            line for line in lines
+            if not any(artifact in line for artifact in ['[INST]', '<<SYS>>', '[/INST]', '<s>', '</s>'])
+            and line.strip() not in ['```java', '```','```json']
+        ]
+        return '\n'.join(cleaned_lines).strip()
+
 
     def run(self, test_scenario):
         # 1. Анализируем сценарий
@@ -173,20 +177,18 @@ if __name__ == "__main__":
     # Путь к вашей gguf модели
     GGUF_MODEL_PATH = "C:\\Users\\apors\\AI\\AFT_Agent\\models\\DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf"
     TEST_SCENARIO = """
-1. Открыть страницу https://demoqa.com/text-box
-2. Заполнить форму данными:
-Full Name: "Иван Петров"
-Email: "ivan.petrov@example.com"
-Current Address: "Москва, ул. Примерная, д. 1"
-Permanent Address: "Санкт-Петербург, ул. Тестовая, д. 2"
-3. Нажать кнопку "Submit"
-4. Проверить, что данные отобразились в блоке результата
-5. Убедиться, что все введенные значения корректно отображены в блоке результата
+Открыть страницу https://www.saucedemo.com, 
+заполнить поле пользователь значением standard_user, 
+заполнить поле пароль значением secret_sauce, 
+нажать кнопку входа, 
+проверить что вход выполнен успешно,
+добавить в корзину товар,
+убедиться что товар добавлен в корзину.
 """
 
     finder = LocalAILocatorFinder(GGUF_MODEL_PATH)
     try:
         result = finder.run(TEST_SCENARIO)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(result) #json.dumps(result, ensure_ascii=False, indent=2))
     finally:
         finder.close()

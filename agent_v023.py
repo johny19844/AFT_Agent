@@ -21,21 +21,28 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 import re  # Исправлено: импорт re в начале файла
 
-# Настройка логирования
+# Настройка логирования: выводим сообщения в консоль с уровнем INFO и определенным форматом
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Файл для хранения статуса файлов сценариев
+# Имя файла для хранения статуса обработанных файлов сценариев (SHA)
 SCENARIO_STATUS_FILE = "scenario_file_status.json"
 
 class GGUFModelClient:
+    """
+    Класс-обертка для работы с языковой моделью GGUF (через llama.cpp)
+    и для поиска локаторов на веб-странице.
+    """
     def __init__(self, model_path: str):
-        self.model_path = model_path
-        self.llm = None
-        self.driver = None
+        self.model_path = model_path  # Путь к файлу модели
+        self.llm = None               # Экземпляр модели
+        self.driver = None            # Selenium WebDriver
 
     #  ***********************Поиск локаторов********************************
     def setup_driver(self):
+        """
+        Инициализация headless Chrome WebDriver для сбора элементов страницы.
+        """
         options = ChromeOptions()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -44,9 +51,13 @@ class GGUFModelClient:
         options.add_argument("--window-size=1920,1080")
         service = ChromeService()
         self.driver = webdriver.Chrome(service=service, options=options)
-        self.driver.implicitly_wait(10)
+        self.driver.implicitly_wait(10)  # Явное ожидание элементов
 
     def analyze_scenario(self, test_scenario):
+        """
+        Анализирует текст сценария, извлекает url и список требуемых элементов.
+        Использует LLM для парсинга сценария.
+        """
         prompt = (
             "Ты — помощник по автоматизации тестирования. "
             "На вход тебе дается тестовый сценарий. "
@@ -67,7 +78,7 @@ class GGUFModelClient:
         rez = self._clean_generated_code(output['choices'][0]['text'])
         print(rez)
         print("=== END MODEL OUTPUT ===")
-        # Попробуем найти JSON в ответе
+        # Пытаемся найти JSON в ответе модели
         match = re.search(r'\{.*\}', output['choices'][0]['text'], re.DOTALL)
         if match:
             try:
@@ -75,8 +86,8 @@ class GGUFModelClient:
                 return scenario_info
             except Exception:
                 pass
+        # Если не удалось получить корректный JSON — выбрасываем ошибку
         raise ValueError("Не удалось получить корректный JSON из ответа Llama")
-
 
     def collect_page_elements(self, url):
         """
@@ -85,14 +96,14 @@ class GGUFModelClient:
         """
         self.driver.get(url)
         elements_info = []
-        # Собираем input, button, a, form, label, select, textarea, div, span
-        tags = ['input', 'button', 'a', 'form', 'label', 'select', 'textarea', 'div', 'span']
+        # Список тегов, которые нас интересуют для поиска элементов
+        tags = ['input', 'button', 'a', 'select', 'textarea', 'div', 'span']
         for tag in tags:
             try:
                 found = self.driver.find_elements(By.TAG_NAME, tag)
                 for el in found:
                     if not el.is_displayed():
-                        continue
+                        continue  # Пропускаем невидимые элементы
                     info = {
                         "tag": tag,
                         "text": el.text.strip(),
@@ -101,95 +112,62 @@ class GGUFModelClient:
                         # "class": el.get_attribute("class"),
                         # "type": el.get_attribute("type"),
                         # "placeholder": el.get_attribute("placeholder"),
-                        "value": el.get_attribute("value"),
+                        #"value": el.get_attribute("value"),
                         # "aria_label": el.get_attribute("aria-label"),
                         # "data_test": el.get_attribute("data-test"),
                         # "outer_html": el.get_attribute("outerHTML")[:500]
                     }
                     elements_info.append(info)
             except Exception:
-                continue
+                continue  # Игнорируем ошибки для отдельных тегов
         return elements_info
 
     def generate_locators(self, scenario_elements, page_elements):
         """
-        Возвращает список элементов с локаторами за одно обращение к ИИ.
+        Генерирует локаторы для требуемых элементов, используя LLM.
+        Возвращает список элементов с локаторами.
         """
         prompt = (
             "Ты — эксперт по Selenium. "
-            "Тебе дан список требуемых элементов для автотеста и список элементов, найденных на странице (оба в виде JSON). "
-            "Для каждого требуемого элемента найди наиболее подходящий элемент на странице и предложи лучший Selenium локатор для него (приоритет по ID или name). "
-            "Верни ТОЛЬКО JSON без дополнительного текста в формате: "
-            '{"element": {...}, "element_found": true/false, '
-            '"locators": [{"type": "ID|CSS|XPATH|NAME", "value": "...", "confidence": 0.95, "explanation": "..."}], '
-            '"reasoning": "..."}.\n\n'
+            "Тебе дан список требуемых элементов для автотеста из сценария и список html элементов, найденных на странице (оба в виде JSON). "
+            "Для каждого требуемого элемента из сценария найди наиболее подходящий элемент на html странице и сформируй лучший Selenium локатор для него (приоритет отдавай ID если на странице он уникален). "
+            "Верни ТОЛЬКО JSON без дополнительного текста, в формате: \n"
+            '[\n'
+            '{\n'
+            '    "required_element": {\n'
+            '    "name": "...",\n'
+            '    "description": "..."\n'
+            '    },\n'
+            '    "locator": {\n'
+            '    "type": "By.ID|By.cssSelector|By.name|By.xpath|",\n'
+            '    "value": "...",\n'
+            '    "reasoning": "..."\n'
+            '    }\n'
+            '}\n'
+            ']\n'
             f"Список требуемых элементов (JSON):\n{json.dumps(scenario_elements, ensure_ascii=False)}\n"
             f"Список элементов на странице (JSON):\n{json.dumps(page_elements[:20], ensure_ascii=False)}\n"
         )
         output = self.llm(prompt, max_tokens=2048, stop=["\n\n"])
-        # Для отладки: выводим результат работы модели в консоль
+        # Для отладки: выводим входные и выходные данные модели
         print("=== MODEL INPUT (generate_locators) ===")
         print(prompt)
         print("=== END MODEL INPUT ===")
 
         print("=== MODEL OUTPUT (generate_locators) ===")
         locators = self._clean_generated_code(output['choices'][0]['text'])
-        print(json.dumps(locators, ensure_ascii=False, indent=2))
+        print(locators)
         print("=== END MODEL OUTPUT ===")
-        # Попробуем найти JSON-массив в ответе
-        # match = re.search(r'\[.*\]', output['choices'][0]['text'], re.DOTALL)
-        # match = re.search(r'\[.*\]', locators, re.DOTALL)
-        # if match:
-        #     try:
-        #         locators_list = json.loads(match.group(0))
-        #         # Проверяем, что это список и элементы имеют нужную структуру
-        #         results = []
-        #         if isinstance(locators_list, list) and len(locators_list) == len(scenario_elements):
-        #             for idx, elem in enumerate(scenario_elements):
-        #                 locator_info = locators_list[idx]
-        #                 # Оставляем только первый (надежный) локатор, если есть
-        #                 best_locator = None
-        #                 if isinstance(locator_info, dict) and isinstance(locator_info.get("locators"), list) and locator_info["locators"]:
-        #                     best_locator = locator_info["locators"][0]
-        #                 results.append({
-        #                     "element": elem,
-        #                     "locator": best_locator if best_locator else {"error": "Локатор не найден"},
-        #                     "reasoning": locator_info.get("reasoning", "") if isinstance(locator_info, dict) else ""
-        #                 })
-        #             return results
-        #         else:
-        #             # Если длина не совпадает, но JSON корректный, возвращаем что есть
-        #             for idx, elem in enumerate(scenario_elements):
-        #                 if isinstance(locators_list, list) and idx < len(locators_list):
-        #                     locator_info = locators_list[idx]
-        #                     best_locator = None
-        #                     if isinstance(locator_info, dict) and isinstance(locator_info.get("locators"), list) and locator_info["locators"]:
-        #                         best_locator = locator_info["locators"][0]
-        #                     results.append({
-        #                         "element": elem,
-        #                         "locator": best_locator if best_locator else {"error": "Локатор не найден"},
-        #                         "reasoning": locator_info.get("reasoning", "") if isinstance(locator_info, dict) else ""
-        #                     })
-        #                 else:
-        #                     results.append({
-        #                         "element": elem,
-        #                         "locator": {"error": "Нет соответствующего элемента в ответе AI"},
-        #                         "reasoning": ""
-        #                     })
-        #             return results
-        #     except Exception as e:
-        #         print(f"Ошибка при разборе JSON: {e}")
-        # # Если не удалось распарсить корректно
-        # results = []
-        # for elem in scenario_elements:
-        #     results.append({
-        #         "element": elem,
-        #         "locator": {"error": "AI не вернул корректный JSON"},
-        #         "reasoning": ""
-        #     })
+        # Возвращаем результат (можно добавить парсинг JSON при необходимости)
         return locators
 
     def find_locators(self, test_scenario):
+        """
+        Основной метод поиска локаторов:
+        1. Анализирует сценарий (LLM)
+        2. Собирает элементы страницы (Selenium)
+        3. Генерирует локаторы (LLM)
+        """
         # 1. Анализируем сценарий
         scenario_info = self.analyze_scenario(test_scenario)
         url = scenario_info.get("url")
@@ -207,6 +185,9 @@ class GGUFModelClient:
         return elements_with_locators
 
     def close(self):
+        """
+        Корректно завершает работу WebDriver, если он был запущен.
+        """
         if self.driver:
             try:
                 self.driver.quit()
@@ -215,11 +196,16 @@ class GGUFModelClient:
     # *******************************************************************
 
     def log_full_prompt(self, prompt: str):
-        """Логирует полный промпт, который передается модели"""
+        """
+        Логирует полный промпт, который передается языковой модели.
+        """
         logger.info("===== FULL PROMPT TO MODEL =====\n%s\n===== END OF PROMPT =====", prompt)
 
     def load_model(self):
-        """Загрузка GGUF модели"""
+        """
+        Загружает GGUF модель из файла.
+        Возвращает True при успехе, иначе False.
+        """
         if not os.path.exists(self.model_path):
             logger.error(f"Model file not found: {self.model_path}")
             return False
@@ -244,7 +230,10 @@ class GGUFModelClient:
             return False
 
     def generate_text(self, prompt: str, max_tokens: int = 8000, temperature: float = 0.7) -> str:
-        """Генерация текста с помощью загруженной модели"""
+        """
+        Генерирует текст с помощью загруженной модели.
+        Возвращает очищенный результат.
+        """
         if not self.llm:
             logger.error("Model not loaded")
             return ""
@@ -272,7 +261,9 @@ class GGUFModelClient:
             return ""
 
     def _clean_generated_code(self, code: str) -> str:
-        """Очистка сгенерированного кода"""
+        """
+        Очищает сгенерированный код от управляющих токенов и артефактов.
+        """
         if not code:
             return ""
         lines = code.split('\n')
@@ -285,10 +276,15 @@ class GGUFModelClient:
 
 
 class TestAutomationAgent:
+    """
+    Главный агент автоматизации тестирования.
+    Отвечает за интеграцию с GitHub, Jenkins, моделью и обработку сценариев.
+    """
     def __init__(self, github_token: str, jenkins_url: str,
                  jenkins_username: str, jenkins_token: str,
                  model_path: str, github_username: str,
                  scenario_repo: str, aft_repo: str):
+        # Сохраняем параметры подключения
         self.github_token = github_token
         self.github_username = github_username
         self.jenkins_url = jenkins_url
@@ -298,19 +294,20 @@ class TestAutomationAgent:
         self.scenario_repo_name = scenario_repo
         self.aft_repo_name = aft_repo
 
-        # Инициализация модели
+        # Инициализация клиента модели
         self.model_client = GGUFModelClient(model_path)
 
-        # Инициализация клиентов
+        # Инициализация клиента GitHub
         try:
             self.github_client = Github(github_token)
-            # Проверяем подключение
+            # Проверяем подключение к GitHub
             user = self.github_client.get_user()
             logger.info(f"🔗 Connected to GitHub as: {user.login}")
         except Exception as e:
             logger.error(f"❌ GitHub connection failed: {e}")
             raise
 
+        # Инициализация клиента Jenkins (если доступен)
         self.jenkins_client = None
         try:
             self.jenkins_client = Jenkins(
@@ -319,7 +316,7 @@ class TestAutomationAgent:
                 password=jenkins_token,
                 timeout=30
             )
-            # Простая проверка
+            # Проверяем подключение к Jenkins
             self.jenkins_client.get_version()
             logger.info(f"🔗 Connected to Jenkins version: {self.jenkins_client.get_version()}")
         except Exception as e:
@@ -327,26 +324,28 @@ class TestAutomationAgent:
             logger.warning("Jenkins operations will be skipped")
             self.jenkins_client = None
 
-        # Для отслеживания изменений
+        # Для отслеживания изменений файлов сценариев
         self.last_checked = datetime.now()
         self.processed_files = set()
         
         # Словарь для отслеживания изменений файлов (filename -> sha)
         self.file_tracking = {}
 
-        # Кэш для pom.xml требований
+        # Кэш для pom.xml требований (ускоряет работу)
         self._pom_requirements_cache = None
         self._pom_requirements_cache_sha = None
 
-        # Загрузка статуса файлов из файла
+        # Загрузка статуса файлов из локального файла
         self._load_file_tracking_status()
 
-        # Загрузка модели
+        # Загрузка языковой модели
         if not self.model_client.load_model():
             logger.warning("⚠️ Failed to load model, using fallback mode")
 
     def _load_file_tracking_status(self):
-        """Загрузка статуса файлов из локального файла"""
+        """
+        Загружает статус обработанных файлов из локального файла.
+        """
         if os.path.exists(SCENARIO_STATUS_FILE):
             try:
                 with open(SCENARIO_STATUS_FILE, "r", encoding="utf-8") as f:
@@ -359,7 +358,9 @@ class TestAutomationAgent:
             self.file_tracking = {}
 
     def _save_file_tracking_status(self):
-        """Сохраняет статус файлов в локальный файл"""
+        """
+        Сохраняет статус обработанных файлов в локальный файл.
+        """
         try:
             with open(SCENARIO_STATUS_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.file_tracking, f, ensure_ascii=False, indent=2)
@@ -368,7 +369,10 @@ class TestAutomationAgent:
             logger.warning(f"⚠️ Failed to save scenario file status: {e}")
 
     def _is_file_changed(self, filename, current_sha):
-        """Проверяет, изменился ли файл"""
+        """
+        Проверяет, изменился ли файл (по SHA).
+        Возвращает True, если файл новый или изменен.
+        """
         tracked_sha = self.file_tracking.get(filename)
         if tracked_sha is None:
             logger.info(f"🆕 New file detected: {filename}")
@@ -402,7 +406,10 @@ class TestAutomationAgent:
         return []
 
     def scan_scenario_repository(self):
-        """Сканирование репозитория сценариев на изменения и новые файлы"""
+        """
+        Сканирует репозиторий сценариев на изменения и новые файлы.
+        Возвращает список измененных/новых файлов (путь, sha).
+        """
         try:
             logger.info(f"🔍 Scanning repository: {self.scenario_repo_name}")
             repo = self.github_client.get_repo(self.scenario_repo_name)
@@ -421,7 +428,7 @@ class TestAutomationAgent:
             return changed_files
         except GithubException as e:
             logger.error(f"❌ Error scanning repository {self.scenario_repo_name}: {e}")
-            # Проверяем существование репозитория
+            # Проверяем существование репозитория и выводим подсказки
             try:
                 self.github_client.get_repo(self.scenario_repo_name)
             except GithubException as e2:
@@ -436,16 +443,19 @@ class TestAutomationAgent:
             return []
 
     def download_scenario_file(self, filename):
-        """Скачивание файла сценария"""
+        """
+        Скачивает файл сценария из GitHub и сохраняет его во временную директорию.
+        Возвращает путь к файлу и его содержимое.
+        """
         try:
             logger.info(f"⬇️ Downloading scenario file: {filename}")
             repo = self.github_client.get_repo(self.scenario_repo_name)
             file_content = repo.get_contents(filename).decoded_content.decode('utf-8')
 
-            # Сохраняем временную копию
+            # Сохраняем временную копию файла
             temp_dir = tempfile.mkdtemp()
             file_path = os.path.join(temp_dir, os.path.basename(filename))
-            # Исправлено: не нужно создавать директорию, если она уже есть (mkdtemp гарантирует существование)
+            # mkdtemp гарантирует существование директории
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(file_content)
             logger.info(f"✅ File downloaded successfully: {filename}")
@@ -463,6 +473,7 @@ class TestAutomationAgent:
             aft_repo = self.github_client.get_repo(self.aft_repo_name)
             pom_content = aft_repo.get_contents("pom.xml")
             pom_sha = pom_content.sha
+            # Используем кэш, если pom.xml не изменился
             if (
                 self._pom_requirements_cache is not None
                 and self._pom_requirements_cache_sha == pom_sha
@@ -475,6 +486,7 @@ class TestAutomationAgent:
             try:
                 root = ET.fromstring(pom_xml)
                 ns = {}
+                # Определяем namespace, если он есть
                 if root.tag.startswith("{"):
                     ns_tag = root.tag.split("}")[0][1:]
                     ns = {'mvn': ns_tag}
@@ -489,7 +501,7 @@ class TestAutomationAgent:
                             tag = tag.split("}", 1)[1]
                         prop_versions[tag] = prop.text
 
-                # Java version
+                # Определяем версию Java
                 java_version = None
                 for key in ["java.version", "maven.compiler.source"]:
                     if key in prop_versions:
@@ -498,7 +510,7 @@ class TestAutomationAgent:
                 if java_version:
                     requirements.append(f"- Используй Java {java_version}")
 
-                # Dependencies
+                # Парсим зависимости <dependencies>
                 dependencies = root.find("mvn:dependencies", ns) if ns else root.find("dependencies")
                 if dependencies is not None:
                     for dep in dependencies.findall("mvn:dependency", ns) if ns else dependencies.findall("dependency"):
@@ -517,7 +529,7 @@ class TestAutomationAgent:
                             dep_str += f" (scope: {scope})"
                         requirements.append(dep_str)
 
-                # Плагины
+                # Парсим плагины <plugins>
                 build = root.find("mvn:build", ns) if ns else root.find("build")
                 if build is not None:
                     plugins = build.find("mvn:plugins", ns) if ns else build.find("plugins")
@@ -535,7 +547,7 @@ class TestAutomationAgent:
                                 plugin_str += f":{version}"
                             requirements.append(plugin_str)
 
-                # Уникальные требования (например, JUnit 5)
+                # Добавляем уникальные требования, если их нет
                 junit_found = any("junit" in req.lower() for req in requirements)
                 if not junit_found:
                     requirements.append("- Используй JUnit 5")
@@ -546,6 +558,7 @@ class TestAutomationAgent:
 
             except Exception as e:
                 logger.warning(f"⚠️ Failed to parse pom.xml: {e}")
+                # Если не удалось распарсить pom.xml — возвращаем дефолтные требования
                 requirements = [
                     "- Используй JUnit 5",
                     "- Добавь WebDriverWait для ожиданий",
@@ -556,11 +569,13 @@ class TestAutomationAgent:
                     "- Используй паттерн Page Object Model (POM)."
                 ]
 
+            # Кэшируем результат и sha pom.xml
             self._pom_requirements_cache = requirements
             self._pom_requirements_cache_sha = pom_sha
             return requirements
         except Exception as e:
             logger.warning(f"⚠️ Failed to get pom.xml from AFT repo: {e}")
+            # Если не удалось получить pom.xml — возвращаем дефолтные требования
             return [
                 "- Используй JUnit 5",
                 "- Добавь WebDriverWait для ожиданий",
@@ -572,7 +587,10 @@ class TestAutomationAgent:
             ]
 
     def generate_java_test_code(self, scenario_content, filename):
-        """Генерация Java кода теста с помощью GGUF модели"""
+        """
+        Генерирует Java-код автотеста с помощью GGUF модели.
+        Если модель недоступна или код невалиден — использует fallback.
+        """
         test_name = os.path.splitext(os.path.basename(filename))[0].replace(' ', '_').replace('-', '_')
         logger.info(f"🤖 Generating Java test code for: {test_name}")
 
@@ -581,19 +599,20 @@ class TestAutomationAgent:
         requirements_str = "\n".join(requirements_list)
         scenario = scenario_content
         test_locators = self.model_client.find_locators(scenario)
+        self.model_client.close()
         prompt = (
-            f"Описание сценария:\n{scenario_content}\n\n"
+            f"Описание сценария:\n{scenario_content}\n"
             f"Требования:\n"
             f"- Имя класса: {test_name}Test\n"
+            f"- Используй java.time.Duration для ожиданий\n"
             f"- Не использовать WebDriverManager\n"
-            f"- Используй System.getProperty(\"webdriver.chrome.driver\") для указания пути к chrome driver\n"
             f"- Используй BeforeEach и AfterEach\n"
             f"{requirements_str}\n"
             f" - Используй следующие локаторы:\n {test_locators}"
         )
         # Не дублируем логирование полного промпта здесь, только в generate_text
         java_code = self.model_client.generate_text(prompt)
-        self.model_client.close()
+        
         if java_code and self.validate_java_code(java_code):
             logger.info(f"✅ Generated valid code for {test_name}Test")
         else:
@@ -602,7 +621,9 @@ class TestAutomationAgent:
         return java_code, f"{test_name}Test.java"
 
     def _generate_fallback_test(self, test_name, scenario_content):
-        """Резервная генерация теста если модель недоступна"""
+        """
+        Резервная генерация теста, если модель недоступна или сгенерировала невалидный код.
+        """
         logger.info(f"🔄 Generating fallback test for: {test_name}")
         return f"""package tests;
 
@@ -644,7 +665,10 @@ public class {test_name}Test {{
 """
 
     def validate_java_code(self, java_code):
-        """Валидация сгенерированного Java кода"""
+        """
+        Валидация сгенерированного Java кода.
+        Проверяет наличие ключевых конструкций.
+        """
         if not java_code:
             return False
         required_patterns = [
@@ -654,7 +678,10 @@ public class {test_name}Test {{
         return all(pattern in java_code for pattern in required_patterns)
 
     def push_to_aft_repository(self, java_code, java_filename):
-        """Загрузка сгенерированного кода в репозиторий AFT"""
+        """
+        Загружает сгенерированный Java-код в репозиторий AFT.
+        Обновляет файл, если он изменился, или создает новый.
+        """
         try:
             if not self.validate_java_code(java_code):
                 logger.warning(f"⚠️ Generated code failed validation: {java_filename}")
@@ -668,6 +695,7 @@ public class {test_name}Test {{
             )
             try:
                 existing_file = aft_repo.get_contents(file_path)
+                # Если файл не изменился — пропускаем коммит
                 if existing_file.decoded_content.decode('utf-8') == java_code:
                     logger.info(f"ℹ️ File {file_path} unchanged, skipping update")
                     return True
@@ -675,6 +703,7 @@ public class {test_name}Test {{
                 logger.info(f"✅ Updated file: {file_path}")
                 logger.info(f"📝 Commit: {commit_message}")
             except GithubException as e:
+                # Если файл не существует — создаем новый
                 if getattr(e, 'status', None) == 404:
                     aft_repo.create_file(file_path, commit_message, java_code)
                     logger.info(f"✅ Created new file: {file_path}")
@@ -694,7 +723,12 @@ public class {test_name}Test {{
             return False
 
     def run(self, scan_interval=300):
-        """Основной цикл работы агента"""
+        """
+        Основной цикл работы агента:
+        - Периодически сканирует репозиторий сценариев на изменения
+        - Обрабатывает новые/измененные сценарии
+        - Загружает сгенерированные тесты в целевой репозиторий
+        """
         logger.info("🚀 Starting Test Automation Agent v0.2")
         logger.info(f"📂 Monitoring: {self.scenario_repo_name}")
         logger.info(f"📂 Target: {self.aft_repo_name}")
@@ -728,7 +762,13 @@ public class {test_name}Test {{
             logger.info("🛑 Agent stopped by user")
 
     def process_scenario(self, filename):
-        """Обработка одного сценария"""
+        """
+        Обрабатывает один сценарий:
+        - Скачивает файл
+        - Генерирует Java-код теста
+        - Загружает тест в целевой репозиторий
+        - Очищает временные файлы
+        """
         logger.info(f"🔄 Processing scenario: {filename}")
         file_path, scenario_content = self.download_scenario_file(filename)
         if not scenario_content:
@@ -748,12 +788,13 @@ public class {test_name}Test {{
         return True
 
 
-# Пример использования
+# Пример использования агента (точка входа)
 if __name__ == "__main__":
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv()  # Загружаем переменные окружения из .env файла
 
+    # Получаем параметры из переменных окружения или используем значения по умолчанию
     GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', 'your_github_token_here')
     GITHUB_USERNAME = os.getenv('GITHUB_USERNAME', 'johny19844')
     JENKINS_URL = os.getenv('JENKINS_URL', 'http://localhost:8080')
@@ -765,12 +806,14 @@ if __name__ == "__main__":
     SCENARIO_REPO = os.getenv('SCENARIO_REPO', 'johny19844/scenario')
     AFT_REPO = os.getenv('AFT_REPO', 'johny19844/AFT')
 
+    # Проверяем наличие GitHub токена
     if not GITHUB_TOKEN or GITHUB_TOKEN == 'your_github_token_here':
         logger.error("❌ Please set GITHUB_TOKEN environment variable!")
         logger.error("Create a .env file with your GitHub token")
         exit(1)
 
     try:
+        # Инициализируем агента и запускаем основной цикл
         agent = TestAutomationAgent(
             github_token=GITHUB_TOKEN,
             jenkins_url=JENKINS_URL,

@@ -1,0 +1,46 @@
+2025-10-01 15:06:54,146 - INFO - Страница полностью загружена
+2025-10-01 15:06:54,150 - INFO - Страница полностью загружена
+2025-10-01 15:08:05,032 - INFO - Собрано 17 элементов со страницы initial_page
+2025-10-01 15:08:05,032 - INFO - Начало выполнения сценария с URL: https://www.saucedemo.com
+2025-10-01 15:08:05,032 - INFO - Выполнение действия 1/7
+2025-10-01 15:08:05,033 - INFO - Выполнение действия: navigate -> https://www.saucedemo.com | Значение: 
+2025-10-01 15:08:05,098 - INFO - Страница полностью загружена
+2025-10-01 15:08:05,102 - INFO - Переход: initial_page -> new_page | Действие: Переход по URL: https://www.saucedemo.com | URL: https://www.saucedemo.com/
+2025-10-01 15:08:05,105 - INFO - Страница полностью загружена
+2025-10-01 15:09:15,914 - INFO - Собрано 17 элементов со страницы new_page
+2025-10-01 15:09:16,915 - INFO - Выполнение действия 2/7
+2025-10-01 15:09:16,915 - INFO - Выполнение действия: type -> input[id='user-name'] | Значение: standard_user
+2025-10-01 15:09:16,923 - INFO - Страница полностью загружена
+2025-10-01 15:10:27,640 - INFO - Собрано 17 элементов со страницы temp
+2025-10-01 15:10:56,345 - ERROR - Не удалось найти элемент для ввода: input[id='user-name']
+2025-10-01 15:10:57,346 - INFO - Выполнение действия 3/7
+2025-10-01 15:10:57,347 - INFO - Выполнение действия: type -> input[id='password'] | Значение: secret_sauce
+2025-10-01 15:10:57,355 - INFO - Страница полностью загружена
+2025-10-01 15:12:08,132 - INFO - Собрано 17 элементов со страницы temp
+2025-10-01 15:12:36,900 - INFO - Введено значение: secret_sauce в поле: input[id='password']
+2025-10-01 15:12:37,901 - INFO - Выполнение действия 4/7
+2025-10-01 15:12:37,901 - INFO - Выполнение действия: click -> input[type='submit'] | Значение: 
+2025-10-01 15:12:37,906 - INFO - Страница полностью загружена
+2025-10-01 15:13:48,706 - INFO - Собрано 17 элементов со страницы temp
+2025-10-01 15:14:18,317 - ERROR - Не удалось найти элемент для клика: input[type='submit']
+2025-10-01 15:14:19,318 - INFO - Выполнение действия 5/7
+2025-10-01 15:14:19,319 - INFO - Выполнение действия: wait ->  | Значение: 
+2025-10-01 15:14:21,319 - INFO - Ожидание  секунд
+2025-10-01 15:14:22,320 - INFO - Выполнение действия 6/7
+2025-10-01 15:14:22,320 - INFO - Выполнение действия: click -> button[id='add-to-cart-sauce-labs-backpack'] | Значение: 
+2025-10-01 15:14:22,328 - INFO - Страница полностью загружена
+2025-10-01 15:15:33,176 - INFO - Собрано 17 элементов со страницы temp
+2025-10-01 15:16:14,931 - WARNING - Элемент xpath=//button[@id='add-to-cart-sauce-labs-backpack'] не найден за 10 секунд
+2025-10-01 15:16:14,932 - ERROR - Не удалось найти элемент для клика: button[id='add-to-cart-sauce-labs-backpack']
+2025-10-01 15:16:15,932 - INFO - Выполнение действия 7/7
+2025-10-01 15:16:15,933 - INFO - Выполнение действия: wait ->  | Значение: 
+2025-10-01 15:16:17,934 - INFO - Ожидание  секунд
+2025-10-01 15:16:18,934 - INFO - Все действия сценария выполнены
+2025-10-01 15:16:18,935 - INFO - Найдено страниц: 3
+2025-10-01 15:16:18,935 - INFO - Требуемых элементов: 1
+2025-10-01 15:16:18,991 - ERROR - Ошибка при выполнении сценария: Requested tokens (6004) exceed context window of 4096
+2025-10-01 15:16:21,170 - INFO - Веб-драйвер закрыт
+2025-10-01 15:16:25,273 - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020C86125D10>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение')': /session/b3d6f6ff178eba06bc76d1883e4fc64a
+2025-10-01 15:16:29,355 - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020C86125950>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение')': /session/b3d6f6ff178eba06bc76d1883e4fc64a
+2025-10-01 15:16:33,451 - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020C860F1480>: Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение')': /session/b3d6f6ff178eba06bc76d1883e4fc64a
+2025-10-01 15:16:37,582 - INFO - Веб-драйвер закрыт
