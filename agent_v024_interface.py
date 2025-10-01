@@ -804,7 +804,7 @@ if __name__ == "__main__":
 
     load_dotenv()  # Загружаем переменные окружения из .env файла
 # Получаем аргументы командной строки
-    # args = parse_arguments()
+    args = parse_arguments()
     # Получаем параметры из переменных окружения или используем значения по умолчанию
     GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', 'your_github_token_here')
     GITHUB_USERNAME = os.getenv('GITHUB_USERNAME', 'johny19844')
@@ -813,16 +813,16 @@ if __name__ == "__main__":
     JENKINS_TOKEN = os.getenv('JENKINS_TOKEN', 'your_jenkins_token')
     
  # Берем настройки из аргументов
-    # MODEL_PATH = args.model
-    # SCENARIO_REPO = args.scenario_repo
-    # AFT_REPO = args.aft_repo
-    # SCAN_INTERVAL = args.interval
+    MODEL_PATH = args.model
+    SCENARIO_REPO = args.scenario_repo
+    AFT_REPO = args.aft_repo
+    SCAN_INTERVAL = args.interval
 
-    MODEL_PATH = os.getenv('MODEL_PATH', './models/yandex-gpt.gguf')
+    # MODEL_PATH = os.getenv('MODEL_PATH', './models/yandex-gpt.gguf')
 
     # Имена репозиториев в формате username/repository
-    SCENARIO_REPO = os.getenv('SCENARIO_REPO', 'johny19844/scenario')
-    AFT_REPO = os.getenv('AFT_REPO', 'johny19844/AFT')
+    # SCENARIO_REPO = os.getenv('SCENARIO_REPO', 'johny19844/scenario')
+    # AFT_REPO = os.getenv('AFT_REPO', 'johny19844/AFT')
 
     # Проверяем наличие GitHub токена
     if not GITHUB_TOKEN or GITHUB_TOKEN == 'your_github_token_here':

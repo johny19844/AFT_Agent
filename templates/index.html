@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Automation Agent</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <div class="header-content">
+          <div class="logo">
+            <svg
+              class="logo-icon"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>Test Automation Agent</span>
+          </div>
+          <div id="agentStatus" class="status-indicator status-inactive">
+            Неактивен
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="dashboard">
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Конфигурация агента</h2>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="modelPath">Путь к модели ИИ</label>
+              <div class="file-input-wrapper">
+                <input
+                  type="file"
+                  id="modelPath"
+                  class="file-input"
+                  accept=".gguf"
+                />
+                <label for="modelPath" class="file-input-label">
+                  Выберите файл модели (.gguf)
+                </label>
+              </div>
+              <div id="modelFileName" class="file-name"></div>
+              <div class="form-hint">
+                Укажите локальный файл модели в формате GGUF
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scenarioRepo"
+                >Репозиторий сценариев</label
+              >
+              <input
+                type="text"
+                id="scenarioRepo"
+                class="form-input"
+                placeholder="username/scenario-repo"
+                value="johny19844/scenario"
+              />
+              <div class="form-hint">Формат: username/repository-name</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="aftRepo">Репозиторий AFT</label>
+              <input
+                type="text"
+                id="aftRepo"
+                class="form-input"
+                placeholder="username/aft-repo"
+                value="johny19844/AFT"
+              />
+              <div class="form-hint">Формат: username/repository-name</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="scanInterval"
+                >Интервал сканирования (секунды)</label
+              >
+              <input
+                type="number"
+                id="scanInterval"
+                class="form-input"
+                value="300"
+                min="30"
+              />
+            </div>
+
+            <div class="actions">
+              <button id="startBtn" class="btn btn-primary">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path d="M8 5V19L19 12L8 5Z" fill="currentColor" />
+                </svg>
+                Запустить агент
+              </button>
+              <button id="stopBtn" class="btn btn-danger" disabled>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect
+                    x="6"
+                    y="6"
+                    width="12"
+                    height="12"
+                    fill="currentColor"
+                  />
+                </svg>
+                Остановить агент
+              </button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 1.5rem">
+            <div class="card-header">
+              <h2 class="card-title">Прогресс выполнения</h2>
+            </div>
+
+            <div class="progress-container">
+              <div class="progress-header">
+                <span class="progress-title">Обработка сценариев</span>
+                <span id="progressPercent">0%</span>
+              </div>
+              <div class="progress-bar">
+                <div
+                  id="progressFill"
+                  class="progress-fill"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div id="processedFiles" class="stat-value">0</div>
+                <div class="stat-label">Обработано файлов</div>
+              </div>
+              <div class="stat-card">
+                <div id="generatedTests" class="stat-value">0</div>
+                <div class="stat-label">Сгенерировано тестов</div>
+              </div>
+              <div class="stat-card">
+                <div id="failedTests" class="stat-value">0</div>
+                <div class="stat-label">Ошибок</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Журнал активности</h2>
+            </div>
+
+            <div id="activityLog" class="activity-log">
+              <div class="log-entry">
+                <span class="log-timestamp">[12:00:00]</span>
+                <span class="log-info"
+                  >Агент инициализирован. Ожидание запуска.</span
+                >
+              </div>
+            </div>
+
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem">
+              <button id="clearLogBtn" class="btn btn-secondary">
+                Очистить журнал
+              </button>
+              <button id="exportLogBtn" class="btn btn-secondary">
+                Экспорт журнала
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>
+      // Элементы интерфейса
+      const agentStatus = document.getElementById("agentStatus");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const modelPathInput = document.getElementById("modelPath");
+      const modelFileName = document.getElementById("modelFileName");
+      const scenarioRepoInput = document.getElementById("scenarioRepo");
+      const aftRepoInput = document.getElementById("aftRepo");
+      const scanIntervalInput = document.getElementById("scanInterval");
+      const progressFill = document.getElementById("progressFill");
+      const progressPercent = document.getElementById("progressPercent");
+      const processedFiles = document.getElementById("processedFiles");
+      const generatedTests = document.getElementById("generatedTests");
+      const failedTests = document.getElementById("failedTests");
+      const activityLog = document.getElementById("activityLog");
+      const clearLogBtn = document.getElementById("clearLogBtn");
+      const exportLogBtn = document.getElementById("exportLogBtn");
+
+      // Адрес нашего сервера
+      const SERVER_URL = window.location.origin;
+
+      // Состояние агента
+      let agentState = {
+        active: false,
+        processedFiles: 0,
+        generatedTests: 0,
+        failedTests: 0,
+        currentProgress: 0,
+      };
+
+      // Переменные для управления опросом
+      let statusPollInterval = null;
+      let logUpdateInterval = null;
+
+      // Обработчики событий
+      modelPathInput.addEventListener("change", function (e) {
+        if (this.files.length > 0) {
+          modelFileName.textContent = this.files[0].name;
+        } else {
+          modelFileName.textContent = "";
+        }
+      });
+
+      startBtn.addEventListener("click", startAgent);
+      stopBtn.addEventListener("click", stopAgent);
+      clearLogBtn.addEventListener("click", clearLog);
+      exportLogBtn.addEventListener("click", exportLog);
+
+      // Функции управления агентом
+      async function startAgent() {
+        // Валидация ввода
+        if (!modelPathInput.files.length) {
+          addLogEntry("Ошибка: Не выбрана модель ИИ", "error");
+          return;
+        }
+
+        if (!scenarioRepoInput.value) {
+          addLogEntry("Ошибка: Не указан репозиторий сценариев", "error");
+          return;
+        }
+
+        if (!aftRepoInput.value) {
+          addLogEntry("Ошибка: Не указан репозиторий AFT", "error");
+          return;
+        }
+
+        try {
+          addLogEntry("Запуск агента...", "info");
+
+          // Сначала загружаем файл на сервер
+          const file = modelPathInput.files[0];
+          const formData = new FormData();
+          formData.append("model", file);
+
+          addLogEntry(`📤 Загружаем файл модели: ${file.name}`, "info");
+
+          const uploadResponse = await fetch(`${SERVER_URL}/api/upload-model`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const uploadResult = await uploadResponse.json();
+
+          if (uploadResult.status !== "success") {
+            addLogEntry(
+              `❌ Ошибка загрузки файла: ${uploadResult.message}`,
+              "error"
+            );
+            return;
+          }
+
+          addLogEntry(`✅ Файл загружен: ${uploadResult.filename}`, "success");
+          addLogEntry(`📂 Полный путь: ${uploadResult.path}`, "info");
+
+          // Теперь запускаем агента с полным путем к файлу
+          const response = await fetch(`${SERVER_URL}/api/start`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model_path: uploadResult.path,
+              scenario_repo: scenarioRepoInput.value,
+              aft_repo: aftRepoInput.value,
+              scan_interval: parseInt(scanIntervalInput.value),
+            }),
+          });
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            agentState.active = true;
+            updateUI();
+            addLogEntry("Агент успешно запущен!", "success");
+            // Начинаем опрашивать статус и логи
+            startStatusPolling();
+            startLogPolling();
+          } else {
+            addLogEntry(`Ошибка: ${result.message}`, "error");
+          }
+        } catch (error) {
+          addLogEntry(`Ошибка подключения: ${error.message}`, "error");
+          addLogEntry("Убедитесь, что сервер запущен", "warning");
+        }
+      }
+
+      async function stopAgent() {
+        try {
+          addLogEntry("Остановка агента...", "info");
+
+          const response = await fetch(`${SERVER_URL}/api/stop`, {
+            method: "POST",
+          });
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            agentState.active = false;
+            updateUI();
+            addLogEntry("Агент остановлен", "info");
+            stopPolling();
+          }
+        } catch (error) {
+          addLogEntry(`Ошибка остановки: ${error.message}`, "error");
+        }
+      }
+
+      // Опрашиваем статус агента
+      function startStatusPolling() {
+        statusPollInterval = setInterval(async () => {
+          if (!agentState.active) {
+            clearInterval(statusPollInterval);
+            return;
+          }
+
+          try {
+            const response = await fetch(`${SERVER_URL}/api/status`);
+            const status = await response.json();
+
+            // Обновляем статус
+            if (status.status === "stopped") {
+              agentState.active = false;
+              updateUI();
+              addLogEntry("Агент завершил работу", "info");
+              stopPolling();
+            }
+          } catch (error) {
+            console.error("Ошибка опроса статуса:", error);
+          }
+        }, 3000); // Опрашиваем каждые 3 секунды
+      }
+
+      // Опрашиваем логи в реальном времени
+      function startLogPolling() {
+        logUpdateInterval = setInterval(async () => {
+          if (!agentState.active) {
+            clearInterval(logUpdateInterval);
+            return;
+          }
+
+          try {
+            const response = await fetch(`${SERVER_URL}/api/status`);
+            const status = await response.json();
+
+            // Обновляем логи
+            if (status.logs && status.logs.length > 0) {
+              status.logs.forEach((log) => {
+                addLogEntry(log.message, log.type);
+              });
+            }
+
+            // Обновляем статистику из логов
+            updateStatsFromLogs(status.logs);
+          } catch (error) {
+            console.error("Ошибка опроса логов:", error);
+          }
+        }, 1000); // Опрашиваем логи каждую секунду
+      }
+
+      function stopPolling() {
+        if (statusPollInterval) {
+          clearInterval(statusPollInterval);
+          statusPollInterval = null;
+        }
+        if (logUpdateInterval) {
+          clearInterval(logUpdateInterval);
+          logUpdateInterval = null;
+        }
+      }
+
+      function updateStatsFromLogs(logs) {
+        if (!logs) return;
+
+        // Анализируем логи для обновления статистики
+        logs.forEach((log) => {
+          const message = log.message.toLowerCase();
+
+          if (
+            message.includes("обработан файл") ||
+            message.includes("processed file")
+          ) {
+            agentState.processedFiles++;
+          }
+          if (
+            message.includes("сгенерирован тест") ||
+            message.includes("generated test")
+          ) {
+            agentState.generatedTests++;
+          }
+          if (
+            message.includes("ошибка") ||
+            message.includes("error") ||
+            message.includes("failed")
+          ) {
+            agentState.failedTests++;
+          }
+
+          // Парсим числа из логов
+          const fileMatch = message.match(/(\d+)\s+(файлов|files)/);
+          if (fileMatch) {
+            agentState.processedFiles = parseInt(fileMatch[1]);
+          }
+
+          const testMatch = message.match(/(\d+)\s+(тестов|tests)/);
+          if (testMatch) {
+            agentState.generatedTests = parseInt(testMatch[1]);
+          }
+        });
+
+        updateUI();
+      }
+
+      function updateUI() {
+        // Обновление статуса
+        if (agentState.active) {
+          agentStatus.className = "status-indicator status-active";
+          agentStatus.textContent = "Активен";
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        } else {
+          agentStatus.className = "status-indicator status-inactive";
+          agentStatus.textContent = "Неактивен";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+
+        // Обновление статистики
+        processedFiles.textContent = agentState.processedFiles;
+        generatedTests.textContent = agentState.generatedTests;
+        failedTests.textContent = agentState.failedTests;
+
+        // Обновление прогресса
+        if (agentState.processedFiles > 0) {
+          agentState.currentProgress = Math.min(
+            agentState.processedFiles * 10,
+            100
+          );
+        }
+        progressFill.style.width = `${agentState.currentProgress}%`;
+        progressPercent.textContent = `${agentState.currentProgress}%`;
+      }
+
+      function addLogEntry(message, type = "info") {
+        // Проверяем, нет ли уже такого сообщения (чтобы избежать дублирования)
+        const existingEntries = activityLog.querySelectorAll(".log-entry");
+        const lastEntry = existingEntries[existingEntries.length - 1];
+
+        if (lastEntry && lastEntry.textContent.includes(message)) {
+          return; // Пропускаем дублирующиеся сообщения
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement("div");
+        logEntry.className = "log-entry";
+
+        const timestampSpan = document.createElement("span");
+        timestampSpan.className = "log-timestamp";
+        timestampSpan.textContent = `[${timestamp}]`;
+
+        const messageSpan = document.createElement("span");
+        messageSpan.className = `log-${type}`;
+        messageSpan.textContent = ` ${message}`;
+
+        logEntry.appendChild(timestampSpan);
+        logEntry.appendChild(messageSpan);
+
+        activityLog.appendChild(logEntry);
+
+        // Автопрокрутка к новым сообщениям
+        activityLog.scrollTop = activityLog.scrollHeight;
+      }
+
+      function clearLog() {
+        // Сохраняем только первое сообщение
+        const firstEntry = activityLog.firstElementChild;
+        activityLog.innerHTML = "";
+        if (firstEntry) {
+          activityLog.appendChild(firstEntry);
+        }
+        addLogEntry("Журнал очищен", "info");
+      }
+
+      async function exportLog() {
+        try {
+          const response = await fetch(`${SERVER_URL}/api/logs`);
+          const data = await response.json();
+
+          let logContent = "=== Журнал работы Test Automation Agent ===\n";
+          logContent += `Сгенерировано: ${new Date().toLocaleString()}\n`;
+          logContent += "=============================================\n\n";
+
+          data.logs.forEach((log) => {
+            logContent += `${log.message}\n`;
+          });
+
+          const blob = new Blob([logContent], {
+            type: "text/plain; charset=utf-8",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `automation-agent-log-${new Date()
+            .toISOString()
+            .slice(0, 10)}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          addLogEntry("Журнал экспортирован", "success");
+        } catch (error) {
+          addLogEntry(`Ошибка экспорта журнала: ${error.message}`, "error");
+        }
+      }
+
+      // Инициализация
+      updateUI();
+      addLogEntry(
+        "Интерфейс агента автоматизации тестирования загружен",
+        "info"
+      );
+      addLogEntry(`Готов к работе. Сервер: ${SERVER_URL}`, "success");
+      addLogEntry(
+        "Для начала работы выберите модель ИИ и укажите репозитории",
+        "info"
+      );
+    </script>
+  </body>
+</html>
