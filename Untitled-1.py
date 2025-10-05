@@ -1,3 +1,11 @@
+import os
+import csv
+import logging
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 def parse_csv_file(file_path):
     """
     Функция для парсинга CSV файлов с обработкой ошибок. 111123
@@ -13,13 +21,13 @@ def parse_csv_file(file_path):
                 data.append(row)
         return data
     except FileNotFoundError:
-        print(f"Ошибка: Файл '{file_path}' не найден.")
+        logger.error(f"Ошибка: Файл '{file_path}' не найден.")
         return None
     except csv.Error as e:
-        print(f"Ошибка при чтении CSV файла: {e}")
+        logger.error(f"Ошибка при чтении CSV файла: {e}")
         return None
     except Exception as e:
-        print(f"Неизвестная ошибка: {e}")
+        logger.error(f"Неизвестная ошибка: {e}")
         return None
         # Пример использования функции parse_csv_file
 if __name__ == "__main__":
@@ -27,7 +35,7 @@ if __name__ == "__main__":
     file_path = 'example.csv'
     result = parse_csv_file(file_path)
     if result is not None:
-        print("Содержимое CSV файла:")
+        logger.info("Содержимое CSV файла:")
         for row in result:
             print(row)
         # Если нужно, можно обработать данные дальше
@@ -52,3 +60,21 @@ if __name__ == "__main__":
                 Функция для вычисления суммы двух чисел.
                 """
                 return a + b
+
+def calculate_total_sum(data):
+    """calcelate summ of All numbers in column """
+    total_sum = 0
+    for row in data:
+        total_sum += row['number']
+    return total_sum
+
+if __name__ == "__main__":
+    file_path = 'example.csv'
+    data = parse_csv_file(file_path)
+    if data is not None:
+        total_sum = calculate_total_sum(data)
+        print(f"Total sum of numbers: {total_sum}")         
+
+p = AutoModelForCausalLM.from_pretrained("yandex-research/yandex-gpt-3.5-turbo")
+p.load_model()
+p.generate_text(prompt = "Hello, how are you?")
